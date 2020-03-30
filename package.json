@@ -1,0 +1,25 @@
+{
+  "name": "com.ravi.biometric",
+  "version": "0.0.1",
+  "description": "Custom plugin to decrypt string after biometric auth",
+  "cordova": {
+    "id": "com.ravi.biometric",
+    "platforms": [
+      "android"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ravishankartati/cordova-biometric.git"
+  },
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-android"
+  ],
+  "author": "Ravishankar Tati",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ravishankartati/cordova-biometric/issues"
+  },
+  "homepage": "https://github.com/ravishankartati/cordova-biometric#readme"
+}
