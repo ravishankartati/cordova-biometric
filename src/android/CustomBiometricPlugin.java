@@ -21,13 +21,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.appcompat.app.ActionBarDrawerToggle;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
-import androidx.biometric.BiometricPrompt;
+import android.hardware.fingerprint.FingerprintManager;
 
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyFactory;
@@ -44,14 +38,28 @@ import java.util.concurrent.Executor;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
+
 /**
  * This class echoes a string called from JavaScript.
  */
 public class CustomBiometricPlugin extends CordovaPlugin {
     private static final String TAG = "com.ravi.biometric";
+    private String encryptedString;
+    private FingerprintManager fingerprintManager;
+    private CancellationSignal cancellationSignal;
+
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
         if (action.equals("coolMethod")) {
+
+            fingerprintManager = (FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
+
+            if (ActivityCompat.checkSelfPermission(this,
+                    Manifest.permission.USE_FINGERPRINT) != PackageManager.PERMISSION_GRANTED)
+                Log.i(TAG, "Require user permissions");
+
+            if (!fingerprintManager.hasEnrolledFingerprints())
+                Log.i(TAG, "No fingerprints enrolled");
             String message = args.getString(0);
             this.coolMethod(message, callbackContext);
             return true;
@@ -67,72 +75,57 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         }
     }
 
-    private void showBiometricPrompt(Cipher cipher, String title, String description) {
-        BiometricPrompt.AuthenticationCallback authenticationCallback = getAuthenticationCallback();
-        BiometricPrompt mBiometricPrompt = new BiometricPrompt(this, getMainThreadExecutor(), authenticationCallback);
-
-        // Set prompt info
-        BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
-                .setDescription(description)
-                .setTitle(title)
-                .setNegativeButtonText("Cancel")
-                .build();
-
-        // Show biometric prompt
-        if (cipher != null) {
-            Log.i(TAG, "Show biometric prompt");
-            mBiometricPrompt.authenticate(promptInfo,new BiometricPrompt.CryptoObject(cipher));
-        }
+    private void showFingerPrintPrompt(Cipher cipher) {
+        FingerprintManager.CryptoObject cryptoObject = new FingerprintManager.CryptoObject(cipher);
+        FingerprintManager.AuthenticationCallback fingerPrintCb = getAuthenticationCallback();
+        cancellationSignal = new CancellationSignal();
+        fingerprintManager.authenticate(cryptoObject, cancellationSignal, 0, fingerPrintCb, null);
     }
 
-    private BiometricPrompt.AuthenticationCallback getAuthenticationCallback() {
-        // Callback for biometric authentication result
-        return new BiometricPrompt.AuthenticationCallback() {
+    private FingerprintManager.AuthenticationCallback getAuthenticationCallback() {
+        return new FingerprintManager.AuthenticationCallback() {
             @Override
-            public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
-                super.onAuthenticationError(errorCode, errString);
+            public void onAuthenticationError(int errMsgId, CharSequence errString) {
+                Log.i(TAG, errString.toString());
             }
 
             @Override
-            public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
-                Log.i(TAG, "onAuthenticationSucceeded");
-                super.onAuthenticationSucceeded(result);
-                if (result.getCryptoObject() != null &&
-                        result.getCryptoObject().getCipher() != null) {
-                    try {
-                        String decryptedInfo = decrypt(result.getCryptoObject().getCipher(), encryptedString);
-                        System.out.println(decryptedInfo);
-                    } catch (Exception e) {
-                        throw new RuntimeException();
-                    }
-                } else {
-                    // Error
-                    Toast.makeText(getApplicationContext(), "Something wrong", Toast.LENGTH_SHORT).show();
-                }
+            public void onAuthenticationHelp(int helpMsgId, CharSequence helpString) {
+                Log.i(TAG, helpString.toString());
             }
 
             @Override
             public void onAuthenticationFailed() {
-                super.onAuthenticationFailed();
+                Log.i(TAG, "Finger print authentication failed");
+            }
+
+            @Override
+            public void onAuthenticationSucceeded(FingerprintManager.AuthenticationResult result) {
+                Log.i(TAG, "Authentication sucessfull");
+                try {
+                    String decryptedInfo = decrypt(result.getCryptoObject().getCipher(), encryptedString);
+                    System.out.println(decryptedInfo);
+                } catch (Exception e) {
+                    throw new RuntimeException();
+                }
+
             }
         };
+
     }
 
-    private KeyPair generateUserKeyPair() throws NoSuchProviderException, NoSuchAlgorithmException, InvalidAlgorithmParameterException {
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore");
-        keyPairGenerator.initialize(
-            new KeyGenParameterSpec.Builder(
-                    "User",
-                    KeyProperties.PURPOSE_DECRYPT)
-                    .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1)
-                    .setUserAuthenticationRequired(true)
-                    .build());
+    private KeyPair generateUserKeyPair()
+            throws NoSuchProviderException, NoSuchAlgorithmException, InvalidAlgorithmParameterException {
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA,
+                "AndroidKeyStore");
+        keyPairGenerator.initialize(new KeyGenParameterSpec.Builder("User", KeyProperties.PURPOSE_DECRYPT)
+                .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1).setUserAuthenticationRequired(true)
+                .build());
         return keyPairGenerator.generateKeyPair();
     }
 
-    private String displayUserPubKey(KeyPair kp)throws  Exception {
+    private String displayUserPubKey(KeyPair kp) throws Exception {
         KeyFactory kf = KeyFactory.getInstance("RSA");
         PublicKey pub_recovered = kf.generatePublic(new X509EncodedKeySpec(kp.getPublic().getEncoded()));
         return pub_recovered.toString();
@@ -156,14 +149,12 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     private Cipher createCipher() throws NoSuchPaddingException, NoSuchAlgorithmException {
         return Cipher.getInstance("RSA/ECB/PKCS1Padding");
     }
+
     @Nullable
     private String encrypt(Cipher cipher, byte[] plainText) throws Exception {
         try {
             byte[] enc = cipher.doFinal(plainText);
-            return Base64.encodeToString(
-                    enc,
-                    Base64.DEFAULT
-            );
+            return Base64.encodeToString(enc, Base64.DEFAULT);
         } catch (Exception e) {
             e.printStackTrace();
         }
