@@ -2,6 +2,7 @@ package com.ravi.biometric;
 
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CallbackContext;
+import org.apache.cordova.PluginResult;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -16,6 +17,7 @@ import android.Manifest;
 import android.os.CancellationSignal;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
+import android.content.pm.PackageManager;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Menu;
@@ -48,19 +50,16 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     private String encryptedString;
     private FingerprintManager fingerprintManager;
     private CancellationSignal cancellationSignal;
+    public static final int BIOMETRIC_REQ_CODE = 1;
+    public static final int PERMISSION_DENIED_ERROR = 2;
+    public static final String BIOMETRIC = Manifest.permission.USE_FINGERPRINT;
+    private CallbackContext callbackContext;
+    private boolean isSucessfulAuth = false;
 
     @Override
-    public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
+    public boolean execute(String action, JSONArray args, CallbackContext cb) throws JSONException {
+        callbackContext = cb;
         if (action.equals("coolMethod")) {
-
-            fingerprintManager = cordova.getActivity().getApplicationContext()
-                    .getSystemService(FingerprintManager.class);
-
-            if (!cordova.hasPermission(Manifest.permission.USE_FINGERPRINT))
-                Log.i(TAG, "Require user permissions");
-
-            if (!fingerprintManager.hasEnrolledFingerprints())
-                Log.i(TAG, "No fingerprints enrolled");
             String message = args.getString(0);
             this.coolMethod(message, callbackContext);
             return true;
@@ -69,8 +68,32 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     }
 
     private void coolMethod(String message, CallbackContext callbackContext) {
+        fingerprintManager = cordova.getActivity().getApplicationContext().getSystemService(FingerprintManager.class);
+
+        if (!cordova.hasPermission(BIOMETRIC))
+            cordova.requestPermission(this, BIOMETRIC_REQ_CODE, BIOMETRIC);
+
+        if (!fingerprintManager.hasEnrolledFingerprints())
+            Log.i(TAG, "No fingerprints enrolled");
+
         if (message != null && message.length() > 0) {
-            callbackContext.success(message);
+            try {
+                KeyPair keyPair = generateUserKeyPair();
+                Cipher cipherEnc = createCipher();
+                cipherEnc.init(Cipher.ENCRYPT_MODE, keyPair.getPublic());
+                // Create biometricPrompt
+                encryptedString = encrypt(cipherEnc, message.getBytes());
+                Log.i(TAG, encryptedString);
+                KeyPair kp = getUserKeyPair("User");
+                Cipher cipherDec = createCipher();
+                cipherDec.init(Cipher.DECRYPT_MODE, kp.getPrivate());
+                // Create biometricPrompt
+                showFingerPrintPrompt(cipherDec);
+                // callbackContext.success(isSucessfulAuth + "");
+            } catch (Exception e) {
+                callbackContext.error("Expected one non-empty string argument.");
+            }
+
         } else {
             callbackContext.error("Expected one non-empty string argument.");
         }
@@ -104,12 +127,13 @@ public class CustomBiometricPlugin extends CordovaPlugin {
             public void onAuthenticationSucceeded(FingerprintManager.AuthenticationResult result) {
                 Log.i(TAG, "Authentication sucessfull");
                 try {
+                    isSucessfulAuth = true;
                     String decryptedInfo = decrypt(result.getCryptoObject().getCipher(), encryptedString);
-                    System.out.println(decryptedInfo);
+                    Log.i(TAG, decryptedInfo);
+                    callbackContext.success(isSucessfulAuth + "" + decryptedInfo );
                 } catch (Exception e) {
                     throw new RuntimeException();
                 }
-
             }
         };
 
@@ -163,6 +187,20 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     private String decrypt(Cipher cipher, String encryptedString) throws Exception {
         byte[] bytes = Base64.decode(encryptedString, Base64.NO_WRAP);
         return new String(cipher.doFinal(bytes));
+    }
+
+    @Override
+    public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults)
+            throws JSONException {
+        for (int r : grantResults) {
+            if (r == PackageManager.PERMISSION_DENIED) {
+                callbackContext.sendPluginResult(new PluginResult(PluginResult.Status.ERROR, PERMISSION_DENIED_ERROR));
+                return;
+            }
+        }
+        if (requestCode == BIOMETRIC_REQ_CODE) {
+            coolMethod("hey", callbackContext);
+        }
     }
 
 }
