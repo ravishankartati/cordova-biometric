@@ -8,11 +8,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.util.Log;
-import android.hardware.biometrics.BiometricManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.Manifest;
+import android.os.CancellationSignal;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
@@ -52,10 +53,10 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
         if (action.equals("coolMethod")) {
 
-            fingerprintManager = (FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
+            fingerprintManager = cordova.getActivity().getApplicationContext()
+                    .getSystemService(FingerprintManager.class);
 
-            if (ActivityCompat.checkSelfPermission(this,
-                    Manifest.permission.USE_FINGERPRINT) != PackageManager.PERMISSION_GRANTED)
+            if (!cordova.hasPermission(Manifest.permission.USE_FINGERPRINT))
                 Log.i(TAG, "Require user permissions");
 
             if (!fingerprintManager.hasEnrolledFingerprints())
@@ -145,12 +146,10 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         return null;
     }
 
-    @Nullable
     private Cipher createCipher() throws NoSuchPaddingException, NoSuchAlgorithmException {
         return Cipher.getInstance("RSA/ECB/PKCS1Padding");
     }
 
-    @Nullable
     private String encrypt(Cipher cipher, byte[] plainText) throws Exception {
         try {
             byte[] enc = cipher.doFinal(plainText);
