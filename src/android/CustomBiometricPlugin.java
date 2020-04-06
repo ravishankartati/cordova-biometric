@@ -88,7 +88,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
                 }
             });
             return true;
-        } else if (action.equals("cancelFingerprintAuth")) {
+        } else if (action.equals("cancellFingerprintAuth")) {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
                 public void run() {
@@ -195,6 +195,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA,
                 "AndroidKeyStore");
         keyPairGenerator.initialize(new KeyGenParameterSpec.Builder(keyStoreName, KeyProperties.PURPOSE_DECRYPT)
+                .setKeySize(size)
                 .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1).setUserAuthenticationRequired(true)
                 .build());
