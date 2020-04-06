@@ -8,7 +8,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import android.util.Log;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -64,9 +63,14 @@ public class CustomBiometricPlugin extends CordovaPlugin {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
                 public void run() {
-                    String toDecrypt = args.getString(0);
-                    String keyName = args.getString(1);
-                    decryptAfterBiometric(toDecrypt, keyName);
+                    try {
+                        String toDecrypt = args.getString(0);
+                        String keyStoreName = args.getString(1);
+                        decryptAfterBiometric(toDecrypt, keyStoreName);
+                    } catch (Exception e) {
+                        Log.i(TAG, e.getMessage());
+                    }
+
                 }
             });
             return true;
@@ -83,8 +87,8 @@ public class CustomBiometricPlugin extends CordovaPlugin {
                     }
                 }
             });
-           return true;
-        } else if(action.equals("cancelFingerprintAuth")) {
+            return true;
+        } else if (action.equals("cancelFingerprintAuth")) {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
                 public void run() {
@@ -110,6 +114,9 @@ public class CustomBiometricPlugin extends CordovaPlugin {
 
         try {
             KeyPair kp = getUserKeyPair(keyStoreName);
+            Cipher cipherEnc = createCipher();
+            cipherEnc.init(Cipher.ENCRYPT_MODE, kp.getPublic());
+            encryptedString = encrypt(cipherEnc, toDecrypt.getBytes());
             Cipher cipherDec = createCipher();
             cipherDec.init(Cipher.DECRYPT_MODE, kp.getPrivate());
             showFingerPrintPrompt(cipherDec);
@@ -123,7 +130,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         try {
             Cipher cipherEnc = createCipher();
             cipherEnc.init(Cipher.ENCRYPT_MODE, getUserKeyPair(keyStoreName).getPublic());
-            return encrypt(cipherEnc, message.getBytes());
+            return encrypt(cipherEnc, toEncrypt.getBytes());
         } catch (Exception e) {
             return e.getMessage();
         }
@@ -161,7 +168,8 @@ public class CustomBiometricPlugin extends CordovaPlugin {
 
             @Override
             public void onAuthenticationFailed() {
-                Toast.makeText(cordova.getActivity().getApplicationContext(), "Finger print authentication failed", Toast.LENGTH_LONG).show();
+                Toast.makeText(cordova.getActivity().getApplicationContext(), "Finger print authentication failed",
+                        Toast.LENGTH_LONG).show();
                 Log.i(TAG, "Finger print authentication failed");
             }
 
@@ -181,49 +189,46 @@ public class CustomBiometricPlugin extends CordovaPlugin {
 
     }
 
-    private KeyPair generateUserKeyPair(int size, Sting keyStoreName)
+    private KeyPair generateUserKeyPair(int size, String keyStoreName)
             throws NoSuchProviderException, NoSuchAlgorithmException, InvalidAlgorithmParameterException {
+                Log.i(TAG, "generateUserKeyPair");
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA,
                 "AndroidKeyStore");
         keyPairGenerator.initialize(new KeyGenParameterSpec.Builder(keyStoreName, KeyProperties.PURPOSE_DECRYPT)
-                .setKeySize(size).setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
+                .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1).setUserAuthenticationRequired(true)
                 .build());
         return keyPairGenerator.generateKeyPair();
     }
 
-    private String generatePublicKey(int keySize, String keyStoreName) {
-        if(isKeyStoreName(keyStoreName))
-            return displayUserPubKey(generateUserKeyPair(keySize, keyStoreName));
-        return false;
+    private String generatePublicKey(int keySize, String keyStoreName) throws Exception {
+        if (getUserKeyPair(keyStoreName) != null) {
+            return getUserPublicKey(getUserKeyPair(keyStoreName));
+        }
+        return getUserPublicKey(generateUserKeyPair(keySize, keyStoreName));
     }
 
-    private boolean isKeyStoreName(String keyStoreName) {
-        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
-        return keyStore.isKeyEntry(keyStoreName);
-    }
-
-    private boolean cancellFingerprintAuth() {
+    private String cancellFingerprintAuth() {
         if (cancellationSignal != null && !cancellationSignal.isCanceled()) {
             cancellationSignal.cancel();
-            return true;
+            return "true";
         }
-        return false;
+        return "false";
     }
 
-    private String displayUserPubKey(KeyPair kp) throws Exception {
+    private String getUserPublicKey(KeyPair kp) throws Exception {
         KeyFactory kf = KeyFactory.getInstance("RSA");
         PublicKey pub_recovered = kf.generatePublic(new X509EncodedKeySpec(kp.getPublic().getEncoded()));
         return pub_recovered.toString();
     }
 
-    private KeyPair getUserKeyPair(String keyName) throws Exception {
+    private KeyPair getUserKeyPair(String keyStoreName) throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
-        if (keyStore.containsAlias(keyName)) {
-            PublicKey publicKey = keyStore.getCertificate(keyName).getPublicKey();
+        if (keyStore.containsAlias(keyStoreName)) {
+            PublicKey publicKey = keyStore.getCertificate(keyStoreName).getPublicKey();
             // Get private key
-            PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyName, null);
+            PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyStoreName, null);
             // Return a key pair
             return new KeyPair(publicKey, privateKey);
         }
@@ -249,7 +254,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
             }
         }
         if (requestCode == BIOMETRIC_REQ_CODE) {
-            decryptAfterBiometric("toDecrypt", "keyStoreName", callbackContext);
+            decryptAfterBiometric("toDecrypt", "keyStoreName");
         }
     }
 
