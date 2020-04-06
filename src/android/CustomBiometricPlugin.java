@@ -158,7 +158,8 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         return new FingerprintManager.AuthenticationCallback() {
             @Override
             public void onAuthenticationError(int errMsgId, CharSequence errString) {
-                Log.i(TAG, errString.toString());
+                Toast.makeText(cordova.getActivity().getApplicationContext(), errString.toString(),
+                        Toast.LENGTH_LONG).show();
             }
 
             @Override
@@ -212,9 +213,9 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     private String cancellFingerprintAuth() {
         if (cancellationSignal != null && !cancellationSignal.isCanceled()) {
             cancellationSignal.cancel();
-            return "true";
+            return "Cancelled";
         }
-        return "false";
+        return "Not cancelled";
     }
 
     private String getUserPublicKey(KeyPair kp) throws Exception {
