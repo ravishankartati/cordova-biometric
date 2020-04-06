@@ -46,6 +46,7 @@ import javax.crypto.NoSuchPaddingException;
  * This class echoes a string called from JavaScript.
  */
 public class CustomBiometricPlugin extends CordovaPlugin {
+
     private static final String TAG = "com.ravi.biometric";
     private String encryptedString;
     private FingerprintManager fingerprintManager;
@@ -59,15 +60,46 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext cb) throws JSONException {
         callbackContext = cb;
-        if (action.equals("coolMethod")) {
-            String message = args.getString(0);
-            this.coolMethod(message, callbackContext);
+        if (action.equals("decryptAfterBiometric")) {
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    String toDecrypt = args.getString(0);
+                    String keyName = args.getString(1);
+                    decryptAfterBiometric(toDecrypt, keyName);
+                }
+            });
             return true;
+        } else if (action.equals("generatePublicKey")) {
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        int keySize = Integer.parseInt(args.getString(0));
+                        String keyStoreName = args.getString(1);
+                        callbackContext.success(generatePublicKey(keySize, keyStoreName));
+                    } catch (Exception e) {
+                        callbackContext.error(e.getMessage());
+                    }
+                }
+            });
+           return true;
+        } else if(action.equals("cancelFingerprintAuth")) {
+            cordova.getThreadPool().execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        callbackContext.success(cancellFingerprintAuth());
+                    } catch (Exception e) {
+                        callbackContext.error(e.getMessage());
+                    }
+                }
+            });
         }
         return false;
     }
 
-    private void coolMethod(String message, CallbackContext callbackContext) {
+    private void decryptAfterBiometric(String toDecrypt, String keyStoreName) {
         fingerprintManager = cordova.getActivity().getApplicationContext().getSystemService(FingerprintManager.class);
 
         if (!cordova.hasPermission(BIOMETRIC))
@@ -76,27 +108,36 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         if (!fingerprintManager.hasEnrolledFingerprints())
             Log.i(TAG, "No fingerprints enrolled");
 
-        if (message != null && message.length() > 0) {
-            try {
-                KeyPair keyPair = generateUserKeyPair();
-                Cipher cipherEnc = createCipher();
-                cipherEnc.init(Cipher.ENCRYPT_MODE, keyPair.getPublic());
-                // Create biometricPrompt
-                encryptedString = encrypt(cipherEnc, message.getBytes());
-                Log.i(TAG, encryptedString);
-                KeyPair kp = getUserKeyPair("User");
-                Cipher cipherDec = createCipher();
-                cipherDec.init(Cipher.DECRYPT_MODE, kp.getPrivate());
-                // Create biometricPrompt
-                showFingerPrintPrompt(cipherDec);
-                // callbackContext.success(isSucessfulAuth + "");
-            } catch (Exception e) {
-                callbackContext.error("Expected one non-empty string argument.");
-            }
-
-        } else {
+        try {
+            KeyPair kp = getUserKeyPair(keyStoreName);
+            Cipher cipherDec = createCipher();
+            cipherDec.init(Cipher.DECRYPT_MODE, kp.getPrivate());
+            showFingerPrintPrompt(cipherDec);
+        } catch (Exception e) {
             callbackContext.error("Expected one non-empty string argument.");
         }
+
+    }
+
+    private String encrypt(String toEncrypt, String keyStoreName) {
+        try {
+            Cipher cipherEnc = createCipher();
+            cipherEnc.init(Cipher.ENCRYPT_MODE, getUserKeyPair(keyStoreName).getPublic());
+            return encrypt(cipherEnc, message.getBytes());
+        } catch (Exception e) {
+            return e.getMessage();
+        }
+
+    }
+
+    private String encrypt(Cipher cipher, byte[] plainText) throws Exception {
+        try {
+            byte[] enc = cipher.doFinal(plainText);
+            return Base64.encodeToString(enc, Base64.DEFAULT);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
     }
 
     private void showFingerPrintPrompt(Cipher cipher) {
@@ -120,6 +161,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
 
             @Override
             public void onAuthenticationFailed() {
+                Toast.makeText(cordova.getActivity().getApplicationContext(), "Finger print authentication failed", Toast.LENGTH_LONG).show();
                 Log.i(TAG, "Finger print authentication failed");
             }
 
@@ -130,24 +172,43 @@ public class CustomBiometricPlugin extends CordovaPlugin {
                     isSucessfulAuth = true;
                     String decryptedInfo = decrypt(result.getCryptoObject().getCipher(), encryptedString);
                     Log.i(TAG, decryptedInfo);
-                    callbackContext.success(isSucessfulAuth + "" + decryptedInfo );
+                    callbackContext.success(isSucessfulAuth + "" + decryptedInfo);
                 } catch (Exception e) {
-                    throw new RuntimeException();
+                    callbackContext.error(e.getMessage());
                 }
             }
         };
 
     }
 
-    private KeyPair generateUserKeyPair()
+    private KeyPair generateUserKeyPair(int size, Sting keyStoreName)
             throws NoSuchProviderException, NoSuchAlgorithmException, InvalidAlgorithmParameterException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA,
                 "AndroidKeyStore");
-        keyPairGenerator.initialize(new KeyGenParameterSpec.Builder("User", KeyProperties.PURPOSE_DECRYPT)
-                .setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
+        keyPairGenerator.initialize(new KeyGenParameterSpec.Builder(keyStoreName, KeyProperties.PURPOSE_DECRYPT)
+                .setKeySize(size).setDigests(KeyProperties.DIGEST_SHA256, KeyProperties.DIGEST_SHA512)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_PKCS1).setUserAuthenticationRequired(true)
                 .build());
         return keyPairGenerator.generateKeyPair();
+    }
+
+    private String generatePublicKey(int keySize, String keyStoreName) {
+        if(isKeyStoreName(keyStoreName))
+            return displayUserPubKey(generateUserKeyPair(keySize, keyStoreName));
+        return false;
+    }
+
+    private boolean isKeyStoreName(String keyStoreName) {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        return keyStore.isKeyEntry(keyStoreName);
+    }
+
+    private boolean cancellFingerprintAuth() {
+        if (cancellationSignal != null && !cancellationSignal.isCanceled()) {
+            cancellationSignal.cancel();
+            return true;
+        }
+        return false;
     }
 
     private String displayUserPubKey(KeyPair kp) throws Exception {
@@ -160,7 +221,6 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
         if (keyStore.containsAlias(keyName)) {
-            // Get public key
             PublicKey publicKey = keyStore.getCertificate(keyName).getPublicKey();
             // Get private key
             PrivateKey privateKey = (PrivateKey) keyStore.getKey(keyName, null);
@@ -172,16 +232,6 @@ public class CustomBiometricPlugin extends CordovaPlugin {
 
     private Cipher createCipher() throws NoSuchPaddingException, NoSuchAlgorithmException {
         return Cipher.getInstance("RSA/ECB/PKCS1Padding");
-    }
-
-    private String encrypt(Cipher cipher, byte[] plainText) throws Exception {
-        try {
-            byte[] enc = cipher.doFinal(plainText);
-            return Base64.encodeToString(enc, Base64.DEFAULT);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return "";
     }
 
     private String decrypt(Cipher cipher, String encryptedString) throws Exception {
@@ -199,7 +249,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
             }
         }
         if (requestCode == BIOMETRIC_REQ_CODE) {
-            coolMethod("hey", callbackContext);
+            decryptAfterBiometric("toDecrypt", "keyStoreName", callbackContext);
         }
     }
 
