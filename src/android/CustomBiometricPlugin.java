@@ -54,11 +54,11 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     public static final int PERMISSION_DENIED_ERROR = 2;
     public static final String BIOMETRIC = Manifest.permission.USE_FINGERPRINT;
     private CallbackContext callbackContext;
-    private boolean isSucessfulAuth = false;
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext cb) throws JSONException {
         callbackContext = cb;
+        Log.i(TAG, action);
         if (action.equals("decryptAfterBiometric")) {
             cordova.getThreadPool().execute(new Runnable() {
                 @Override
@@ -105,12 +105,14 @@ public class CustomBiometricPlugin extends CordovaPlugin {
                 public void run() {
                     try {
                         String toEncrypt = args.getString(0);
+                        String keyStoreName = args.getString(1);
                         callbackContext.success(encrypt(toEncrypt, keyStoreName));
                     } catch (Exception e) {
                         callbackContext.error(action + e.getMessage());
                     }
                 }
             });
+            return true;
         }
 
         return false;
@@ -180,10 +182,8 @@ public class CustomBiometricPlugin extends CordovaPlugin {
             public void onAuthenticationSucceeded(FingerprintManager.AuthenticationResult result) {
                 Log.i(TAG, "Authentication sucessfull");
                 try {
-                    isSucessfulAuth = true;
                     String decryptedInfo = decrypt(result.getCryptoObject().getCipher(), encryptedString);
-                    Log.i(TAG, decryptedInfo);
-                    callbackContext.success(isSucessfulAuth + "" + decryptedInfo);
+                    callbackContext.success( decryptedInfo);
                 } catch (Exception e) {
                     callbackContext.error(e.getMessage());
                 }
@@ -220,9 +220,10 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     }
 
     private String getUserPublicKey(KeyPair kp) throws Exception {
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        PublicKey pub_recovered = kf.generatePublic(new X509EncodedKeySpec(kp.getPublic().getEncoded()));
-        return pub_recovered.toString();
+        // KeyFactory kf = KeyFactory.getInstance("RSA");
+        // PublicKey pub_recovered = kf.generatePublic(new X509EncodedKeySpec(kp.getPublic().getEncoded()));
+        // return pub_recovered.toString();
+        return Base64.encodeToString(kp.getPublic().getEncoded(), Base64.URL_SAFE);
     }
 
     private KeyPair getUserKeyPair(String keyStoreName) throws Exception {
