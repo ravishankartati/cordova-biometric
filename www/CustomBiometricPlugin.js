@@ -12,9 +12,9 @@ exports.cancellFingerprintAuth = function (sucess, error) {
     exec(sucess, error, 'CustomBiometricPlugin', 'cancellFingerprintAuth', ['']);
 };
  
-// exports.encrypt = function(stringToencrypt, success, error) {
-//     exec(success, error, 'CustomBiometricPlugin', 'encrypt', [stringToencrypt]);
-// };
+exports.encrypt = function(toEncrypt, keyStoreName, success, error) {
+    exec(success, error, 'CustomBiometricPlugin', 'encrypt', [toEncrypt, keyStoreName]);
+};
 
 
 
