@@ -113,10 +113,7 @@ public class CustomBiometricPlugin extends CordovaPlugin {
             Log.i(TAG, "No fingerprints enrolled");
 
         try {
-            KeyPair kp = getUserKeyPair(keyStoreName);
-            Cipher cipherEnc = createCipher();
-            cipherEnc.init(Cipher.ENCRYPT_MODE, kp.getPublic());
-            encryptedString = encrypt(cipherEnc, toDecrypt.getBytes());
+            encryptedString = toDecrypt;
             Cipher cipherDec = createCipher();
             cipherDec.init(Cipher.DECRYPT_MODE, kp.getPrivate());
             showFingerPrintPrompt(cipherDec);
