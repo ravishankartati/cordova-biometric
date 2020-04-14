@@ -16,6 +16,10 @@ exports.encrypt = function(toEncrypt, keyStoreName, success, error) {
     exec(success, error, 'CustomBiometricPlugin', 'encrypt', [toEncrypt, keyStoreName]);
 };
 
+exports.getIMEI = function(sucess, error) {
+    exec(sucess, error, 'CustomBiometricPlugin', 'getIMEI', ['']);
+}
+
 
 
 

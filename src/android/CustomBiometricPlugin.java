@@ -24,6 +24,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
 import android.hardware.fingerprint.FingerprintManager;
+import android.telephony.TelephonyManager;
 
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyFactory;
@@ -51,8 +52,10 @@ public class CustomBiometricPlugin extends CordovaPlugin {
     private FingerprintManager fingerprintManager;
     private CancellationSignal cancellationSignal;
     public static final int BIOMETRIC_REQ_CODE = 1;
+    public static final int READPHONE_STATE_REQ_CODE = 3;
     public static final int PERMISSION_DENIED_ERROR = 2;
     public static final String BIOMETRIC = Manifest.permission.USE_FINGERPRINT;
+    public static final String READ_PHONE_STATE = Manifest.permission.READ_PRIVILEGED_PHONE_STATE;
     private CallbackContext callbackContext;
 
     @Override
@@ -112,6 +115,13 @@ public class CustomBiometricPlugin extends CordovaPlugin {
                     }
                 }
             });
+            return true;
+        } else if (action.equals("getIMEI")) {
+            try {
+                callbackContext.success(getIMEI());
+            } catch (Exception e) {
+                callbackContext.error(action + e.getMessage());
+            }
             return true;
         }
 
@@ -248,6 +258,13 @@ public class CustomBiometricPlugin extends CordovaPlugin {
         return new String(cipher.doFinal(bytes));
     }
 
+    private String getIMEI() throws Exception {
+        TelephonyManager telephonyManager =  cordova.getActivity().getApplicationContext().getSystemService(TelephonyManager.class);
+        if (!cordova.hasPermission(READ_PHONE_STATE))
+            cordova.requestPermission(this, READPHONE_STATE_REQ_CODE, READ_PHONE_STATE);
+        return telephonyManager.getImei ();
+    }
+
     @Override
     public void onRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults)
             throws JSONException {
@@ -257,8 +274,15 @@ public class CustomBiometricPlugin extends CordovaPlugin {
                 return;
             }
         }
-        if (requestCode == BIOMETRIC_REQ_CODE) {
-            decryptAfterBiometric("toDecrypt", "keyStoreName");
+        switch (requestCode) {
+            case BIOMETRIC_REQ_CODE:
+                decryptAfterBiometric("toDecrypt", "keyStoreName");
+                break;
+            case READPHONE_STATE_REQ_CODE:
+                getIMEI();
+                break;
+            default:
+                break;
         }
     }
 
