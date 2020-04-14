@@ -11,11 +11,11 @@
             </feature>
 
         </config-file>
-        <!-- <config-file target="AndroidManifest.xml" parent="/manifest">
+        <config-file target="AndroidManifest.xml" parent="/manifest">
             <uses-permission android:name="android.permission.USE_FINGERPRINT" />
             <uses-permission android:name="android.permission.USE_BIOMETRIC" />
             <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-        </config-file> -->
+        </config-file>
         <config-file parent="/*" target="AndroidManifest.xml"></config-file>
         <source-file src="src/android/CustomBiometricPlugin.java" target-dir="src/com/ravi/biometric/CustomBiometricPlugin" />
     </platform>
